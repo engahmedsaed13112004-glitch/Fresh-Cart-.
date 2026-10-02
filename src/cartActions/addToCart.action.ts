@@ -2,7 +2,7 @@
 
 import { getMyToken } from "../app/utilities/getMyToken";
 
-export async function addToCart(id: string) {
+export async function addToCart(id: string, userToken: any) {
   try {
     const token = await getMyToken();
 

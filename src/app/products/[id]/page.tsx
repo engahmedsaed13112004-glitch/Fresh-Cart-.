@@ -3,9 +3,10 @@
 import { useEffect, useState, use } from "react";
 import Image from "next/image";
 import { getProductDetails } from "../../../cartActions/products.action"; 
-import { addToCart } from "../../../cartActions/addToCart.action"; // استيراد أكشن السلة
+import { addToCart } from "../../../cartActions/addToCart.action"; 
 import { useCart } from "../../../context/CartContext"; 
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 
 interface Product {
   _id: string;
@@ -18,19 +19,22 @@ interface Product {
   category: { name: string };
 }
 
-export default function ProductDetailsPage({ params }: { params: Promise<{ id: string }> }) {
-
-  const { id } = use(params);
+function ProductDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const id = resolvedParams.id;
   
+  const { data: session } = useSession();
+
   const [product, setProduct] = useState<Product | null>(null);
   const [selectedImage, setSelectedImage] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [adding, setAdding] = useState<boolean>(false);
-  
+
   const { refreshCartCount } = useCart();
 
   useEffect(() => {
     async function fetchDetails() {
+      if (!id) return;
       setLoading(true);
       const data = await getProductDetails(id);
       if (data) {
@@ -44,18 +48,27 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
 
   const handleAddToCart = async () => {
     if (!product) return;
+
+    // استخراج التوكن بأمان لتفادي أي خطأ
+    const sessionData = session as Record<string, any> | null;
+    const userToken = sessionData?.token || sessionData?.user?.token;
+
+    if (!userToken) {
+      toast.error("Please log in first to add items to your cart");
+      return;
+    }
+
     setAdding(true);
     try {
-      // إرسال المنتج للسلة مباشرة عبر الـ Action أو الـ API
-      if (typeof addToCart === "function") {
-        await addToCart(product._id || id);
-      }
+      const res = await addToCart(product._id || id, userToken);
       
-      toast.success("Product added to cart!");
-      
-      // تحديث العداد في الـ Navbar
-      if (refreshCartCount) {
-        await refreshCartCount();
+      if (res?.status === "success" || res?.message === "success") {
+        toast.success("Product added to cart!");
+        if (refreshCartCount) {
+          await refreshCartCount();
+        }
+      } else {
+        toast.error(res?.message || "Failed to add product to cart");
       }
     } catch (error) {
       toast.error("Failed to add product to cart");
@@ -129,7 +142,7 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
           <button
             disabled={adding}
             onClick={handleAddToCart}
-            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-medium py-3 rounded-xl transition-colors shadow-md disabled:opacity-50"
+            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-medium py-3 rounded-xl transition-colors shadow-md disabled:opacity-50 cursor-pointer"
           >
             {adding ? "Adding..." : "Add To Cart"}
           </button>
@@ -139,3 +152,5 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
     </div>
   );
 }
+
+export default ProductDetailsPage;
